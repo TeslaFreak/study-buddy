@@ -1,0 +1,321 @@
+/* Study Materials Container - Flattened */
+.study-materials-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.study-materials-container h3 {
+  margin: 0 0 12px 0;
+  color: #333;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* Empty State */
+.empty-state {
+  background: transparent;
+  border: 1px dashed rgba(102, 126, 234, 0.3);
+  border-radius: 16px;
+  padding: 40px 20px;
+  text-align: center;
+  color: #666;
+}
+
+.empty-state p {
+  margin: 10px 0;
+  line-height: 1.6;
+}
+
+.empty-state .hint {
+  color: #667eea;
+  font-weight: 500;
+  margin-top: 20px;
+}
+
+/* Tab Navigation - Floating buttons */
+.material-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 0;
+}
+
+.material-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  background: rgba(102, 126, 234, 0.08);
+  border: 1px solid rgba(102, 126, 234, 0.15);
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #555;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.material-tab:hover {
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.12);
+  border-color: rgba(102, 126, 234, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.15);
+}
+
+.material-tab.active {
+  color: white;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  font-weight: 600;
+}
+
+.tab-icon {
+  font-size: 16px;
+}
+
+.tab-label {
+  white-space: nowrap;
+}
+
+/* Tab Content Area - No background, natural flow */
+.material-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 0 0;
+}
+
+/* ========================================
+   STUDY GUIDE TAB (Clean, Native Look)
+   ======================================== */
+
+.study-guide {
+  max-width: 100%;
+}
+
+.guide-header {
+  margin-bottom: 20px;
+  padding-bottom: 0;
+}
+
+.guide-meta {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.guide-category {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.guide-id {
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.guide-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #333;
+  line-height: 1.3;
+}
+
+.guide-content {
+  margin-bottom: 28px;
+}
+
+.guide-text {
+  font-size: 15px;
+  line-height: 1.8;
+  color: #444;
+  margin: 0;
+  text-align: justify;
+}
+
+.guide-section {
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  background: transparent;
+  border-radius: 12px;
+  border: 1px solid rgba(102, 126, 234, 0.15);
+  transition: all 0.2s;
+}
+
+.guide-section:hover {
+  border-color: rgba(102, 126, 234, 0.3);
+  background: rgba(102, 126, 234, 0.03);
+}
+
+.section-heading {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.concepts-list,
+.questions-list {
+  margin: 0;
+  padding-left: 24px;
+  list-style: none;
+}
+
+.concept-item,
+.question-item {
+  position: relative;
+  margin-bottom: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #555;
+}
+
+.concept-item::before {
+  content: "•";
+  position: absolute;
+  left: -16px;
+  color: #667eea;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.question-item::before {
+  content: "?";
+  position: absolute;
+  left: -20px;
+  color: #667eea;
+  font-weight: bold;
+  background: #e8ecff;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+/* ========================================
+   SOURCE EXCERPTS TAB (Book Style)
+   ======================================== */
+
+.source-excerpts {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.excerpts-intro {
+  padding: 14px 18px;
+  background: rgba(255, 251, 234, 0.4);
+  border-left: 3px solid #f59e0b;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.excerpts-intro p {
+  margin: 0;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.5;
+}
+
+.excerpt-card {
+  background: transparent;
+  border: 1px solid rgba(102, 126, 234, 0.15);
+  border-radius: 12px;
+  padding: 16px 18px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.excerpt-card:hover {
+  background: rgba(102, 126, 234, 0.03);
+  border-color: rgba(102, 126, 234, 0.3);
+  transform: translateY(-2px);
+}
+
+.excerpt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 0;
+}
+
+.excerpt-number {
+  font-size: 12px;
+  font-weight: 600;
+  color: #667eea;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.excerpt-relevance {
+  font-size: 11px;
+  color: #666;
+  background: #e8ecff;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.excerpt-body {
+  background: white;
+  border-left: 3px solid #667eea;
+  padding: 16px;
+  margin-bottom: 12px;
+  font-family: "Georgia", serif;
+  position: relative;
+}
+
+.excerpt-ellipsis {
+  color: #999;
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  user-select: none;
+}
+
+.excerpt-text {
+  margin: 8px 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #333;
+  text-align: justify;
+}
+
+.excerpt-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.excerpt-source {
+  font-size: 11px;
+  color: #888;
+  font-style: italic;
+}
+
+/* Scrollbar Styling */
+.material-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.material-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.material-content::-webkit-scrollbar-thumb {
+  background: #667eea;
+  border-radius: 4px;
+}
+
+.material-content::-webkit-scrollbar-thumb:hover {
+  background: #5568d3;
+}

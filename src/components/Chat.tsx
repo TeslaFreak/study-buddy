@@ -1,46 +1,51 @@
-import { useState } from 'react';
-import type { Message } from '../types/chat';
-import { sendMessage } from '../services/api';
-import './Chat.css';
+import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import type { Message, SourceMaterial } from "../types/chat";
+import { sendMessage } from "../services/api";
+import "./Chat.css";
 
-export function Chat() {
+interface ChatProps {
+  onResponseReceived: (sources: SourceMaterial[], materialId?: string) => void;
+}
+
+export function Chat({ onResponseReceived }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSend = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      role: 'user',
-      content: inputValue,
+      role: "user",
+      content: inputValue.trim(),
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue('');
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue("");
     setIsLoading(true);
     setError(null);
 
     try {
-      // TODO: Candidates need to complete the API integration
-      // The sendMessage function in api.ts needs to be implemented
-      const response = await sendMessage(inputValue);
-      
+      const response = await sendMessage(userMessage.content);
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
+        role: "assistant",
         content: response.response,
         timestamp: new Date(),
-        context: response.context_used || undefined,
+        sources: response.sources,
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      onResponseReceived(response.sources || [], response.relevantMaterialId);
     } catch (err) {
-      setError('Failed to send message. Please make sure the server is running.');
-      console.error('Chat error:', err);
+      setError("Failed to send message. Please try again.");
+      console.error("Chat error:", err);
     } finally {
       setIsLoading(false);
     }
@@ -56,16 +61,25 @@ export function Chat() {
       <div className="messages-container">
         {messages.length === 0 ? (
           <div className="empty-state">
-            <p>No messages yet. Try asking about photosynthesis, cellular respiration, or mitosis!</p>
+            <p>
+              No messages yet. Try asking about photosynthesis, cellular
+              respiration, or mitosis! Or ask to test your knowledge on the
+              subjects
+            </p>
           </div>
         ) : (
-          messages.map(message => (
+          messages.map((message) => (
             <div key={message.id} className={`message message-${message.role}`}>
-              <div className="message-role">{message.role === 'user' ? 'You' : 'Study Buddy'}</div>
-              <div className="message-content">{message.content}</div>
-              {message.context && (
-                <div className="message-context">Context: {message.context}</div>
-              )}
+              <div className="message-role">
+                {message.role === "user" ? "You" : "Study Buddy"}
+              </div>
+              <div className="message-content">
+                {message.role === "assistant" ? (
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
+                ) : (
+                  message.content
+                )}
+              </div>
             </div>
           ))
         )}
@@ -75,9 +89,7 @@ export function Chat() {
             <div className="message-content loading">Thinking...</div>
           </div>
         )}
-        {error && (
-          <div className="error-message">{error}</div>
-        )}
+        {error && <div className="error-message">{error}</div>}
       </div>
 
       <div className="input-container">
@@ -85,17 +97,17 @@ export function Chat() {
           type="text"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSend()}
+          onKeyPress={(e) => e.key === "Enter" && !isLoading && handleSend()}
           placeholder="Ask a question about your study materials..."
           disabled={isLoading}
           className="chat-input"
         />
-        <button 
-          onClick={handleSend} 
+        <button
+          onClick={handleSend}
           disabled={isLoading || !inputValue.trim()}
           className="send-button"
         >
-          {isLoading ? 'Sending...' : 'Send'}
+          {isLoading ? "Sending..." : "Send"}
         </button>
       </div>
     </div>

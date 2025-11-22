@@ -27,3 +27,11 @@ dist-ssr
 .env
 .env.local
 .env.production
+
+# CDK
+cdk.out/
+cdk/cdk.out/
+*.js
+*.d.ts
+!jest.config.js
+!eslint.config.js

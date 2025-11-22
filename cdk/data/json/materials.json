@@ -1,0 +1,78 @@
+{
+  "topics": [
+    {
+      "id": "photosynthesis",
+      "title": "Photosynthesis",
+      "category": "Biology",
+      "content": "Photosynthesis is the process by which plants and other organisms convert light energy into chemical energy stored in glucose. This process occurs primarily in the chloroplasts of plant cells and involves two main stages: the light-dependent reactions and the Calvin cycle (light-independent reactions). During the light-dependent reactions, which take place in the thylakoid membranes, chlorophyll absorbs light energy, which is used to split water molecules (H2O) into oxygen (O2), protons, and electrons. This process, called photolysis, releases oxygen as a byproduct. The energy from light is also used to generate ATP and NADPH, which are energy carriers. In the Calvin cycle, which occurs in the stroma of chloroplasts, carbon dioxide (CO2) from the atmosphere is fixed into organic molecules using the ATP and NADPH produced in the light reactions. The enzyme RuBisCO catalyzes the first major step of carbon fixation. Through a series of reactions, CO2 is ultimately converted into glucose (C6H12O6). The overall equation for photosynthesis is: 6CO2 + 6H2O + light energy → C6H12O6 + 6O2. This process is crucial for life on Earth as it produces oxygen for respiration and forms the base of most food chains.",
+      "key_concepts": [
+        "Chloroplasts and chlorophyll",
+        "Light-dependent reactions",
+        "Calvin cycle",
+        "ATP and NADPH production",
+        "Carbon fixation",
+        "RuBisCO enzyme",
+        "Oxygen production"
+      ],
+      "study_questions": [
+        "What are the two main stages of photosynthesis?",
+        "Where do light-dependent reactions occur?",
+        "What is the role of chlorophyll in photosynthesis?",
+        "How is carbon dioxide converted into glucose?",
+        "Why is photosynthesis important for life on Earth?"
+      ]
+    },
+    {
+      "id": "cell_respiration",
+      "title": "Cellular Respiration",
+      "category": "Biology",
+      "content": "Cellular respiration is the process by which cells break down glucose and other organic molecules to release energy in the form of ATP (adenosine triphosphate). This process is essentially the reverse of photosynthesis and occurs in all living cells. Cellular respiration consists of three main stages: glycolysis, the Krebs cycle (citric acid cycle), and the electron transport chain. Glycolysis occurs in the cytoplasm and breaks down glucose (C6H12O6) into two molecules of pyruvate, producing a small amount of ATP and NADH. This process does not require oxygen and is therefore anaerobic. The pyruvate then enters the mitochondria, where it is converted to acetyl-CoA and enters the Krebs cycle. The Krebs cycle, occurring in the mitochondrial matrix, further breaks down the acetyl-CoA, releasing CO2 and producing NADH, FADH2, and a small amount of ATP. The electron transport chain, located in the inner mitochondrial membrane, uses the NADH and FADH2 produced in earlier stages to generate the majority of ATP through oxidative phosphorylation. Oxygen serves as the final electron acceptor, combining with hydrogen to form water. The overall equation for cellular respiration is: C6H12O6 + 6O2 → 6CO2 + 6H2O + ATP. In total, cellular respiration can produce up to 38 ATP molecules from one glucose molecule, though the actual yield is often lower due to inefficiencies.",
+      "key_concepts": [
+        "ATP production",
+        "Glycolysis",
+        "Krebs cycle (Citric acid cycle)",
+        "Electron transport chain",
+        "Mitochondria",
+        "Aerobic vs anaerobic respiration",
+        "NADH and FADH2",
+        "Oxidative phosphorylation"
+      ],
+      "study_questions": [
+        "What are the three main stages of cellular respiration?",
+        "Where does glycolysis occur and what does it produce?",
+        "What is the role of oxygen in cellular respiration?",
+        "How many ATP molecules can be produced from one glucose molecule?",
+        "What happens during the electron transport chain?"
+      ]
+    },
+    {
+      "id": "mitosis",
+      "title": "Mitosis and Cell Division",
+      "category": "Biology",
+      "content": "Mitosis is a type of cell division that results in two daughter cells, each having the same number and kind of chromosomes as the parent nucleus. This process is essential for growth, repair, and asexual reproduction in organisms. The cell cycle consists of interphase (G1, S, and G2 phases) and the mitotic phase (M phase). During interphase, the cell grows, replicates its DNA, and prepares for division. The S phase is particularly important as this is when DNA replication occurs, ensuring each daughter cell will receive a complete set of genetic information. Mitosis itself is divided into five distinct phases: prophase, prometaphase, metaphase, anaphase, and telophase. During prophase, chromatin condenses into visible chromosomes, each consisting of two sister chromatids joined at the centromere. The centrioles move to opposite poles of the cell, and the nuclear envelope begins to break down. In prometaphase, the nuclear envelope completely fragments, and spindle fibers attach to the kinetochores of chromosomes. During metaphase, chromosomes align at the cell's equator (metaphase plate). In anaphase, sister chromatids separate and move toward opposite poles of the cell. Finally, during telophase, nuclear envelopes reform around each set of chromosomes, and the chromosomes begin to decondense. Mitosis is followed by cytokinesis, the division of the cytoplasm, which differs between animal cells (cleavage furrow) and plant cells (cell plate formation).",
+      "key_concepts": [
+        "Cell cycle phases",
+        "DNA replication",
+        "Chromosome structure",
+        "Sister chromatids",
+        "Spindle apparatus",
+        "Centromeres and kinetochores",
+        "Cytokinesis",
+        "Cell cycle checkpoints"
+      ],
+      "study_questions": [
+        "What are the phases of mitosis in order?",
+        "When does DNA replication occur in the cell cycle?",
+        "What is the difference between chromatin and chromosomes?",
+        "How does cytokinesis differ between plant and animal cells?",
+        "What is the purpose of cell cycle checkpoints?"
+      ]
+    }
+  ],
+  "metadata": {
+    "course": "Biology 101",
+    "level": "Introductory",
+    "last_updated": "2024-01-15",
+    "total_topics": 3
+  }
+}

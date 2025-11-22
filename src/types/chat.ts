@@ -3,7 +3,7 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  context?: string;
+  sources?: SourceMaterial[];
 }
 
 export interface ChatRequest {
@@ -12,7 +12,16 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   response: string;
-  context_used?: string | null;
+  sessionId?: string;
+  sources?: SourceMaterial[];
+  relevantMaterialId?: string;
+}
+
+export interface SourceMaterial {
+  content: string;
+  score: number;
+  source: string;
+  documentName: string;
 }
 
 export interface StudyMaterial {
@@ -22,4 +31,14 @@ export interface StudyMaterial {
   content: string;
   key_concepts: string[];
   study_questions: string[];
+}
+
+export interface MaterialsData {
+  topics: StudyMaterial[];
+  metadata: {
+    course: string;
+    level: string;
+    last_updated: string;
+    total_topics: number;
+  };
 }

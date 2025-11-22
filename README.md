@@ -1,169 +1,225 @@
-# Study Buddy - Take-Home Assignment
+# Study Buddy - AI-Powered Learning Assistant
 
-Welcome! This is a take-home coding assignment for our software engineering position. You'll be implementing chat functionality for a Study Buddy application that helps students learn by answering questions about their study materials.
+## Design Decisions
 
-## 🎯 Your Task (1-3 hours) - Please do not spend more than 3 hours on this. It is not expected for your solution to be perfectly polished and we want to be respectful of your time. 
+### Architecture
 
-Build a working chat interface that:
-1. Connects the frontend to the backend API
-2. Integrates with Ollama (or an API of your choice) to generate responses
-3. Uses the provided study materials as context for answers
+While the original project included a local server implementation, the instructions encouraged creative liberties, so I approached this how I'd typically make a similar LLM app on my own. I got rid of the local server entirely and moved everything to CDK with serverless services.
 
-Take as many creative liberties as you want with your implementation! This is a chance for you to demonstrate your familiarity with building LLM based applications and to demonstrate your creativity. 
+### AI Agent Implementation
 
-## 🚀 Quick Setup
+The conversational AI is powered by the Strands SDK running on AWS Lambda with Amazon Bedrock's Claude 3.5 Haiku model. I'm using an S3SessionManager to maintain conversation memory across API calls. The agent uses structured output to return both the response and metadata about which study materials are most relevant to the current discussion.
 
-### Start the Application
+### Knowledge Base & RAG Implementation
+
+To handle the pdf context, I actually decided to experiment with the new s3 vector buckets in preview for bedrock knowledge bases. These store embeddings directly in S3, eliminating the need for separate vector databases like OpenSearch. Much cheaper than OpenSearch Serverless and no separate database infrastructure to manage.
+
+Since this feature is still in preview, there are no CDK constructs available yet. This is the one part of the infrastructure that I had to be set up manually in the AWS Console. I used it mostly because its so much cheaper than open search or some other vector db (yes I could have ran one locally with the server setup but I just wanted to see how this would work because I hadn't used the vector buckets yet either).
+
+For the PDF content, I used semantic chunking to help preserve context by respecting natural topic boundaries rather than arbitrarily cutting text every N characters. The JSON materials were left unchunked since they're already small and well-structured.
+
+Youll see I pass that Knowledge Base ID into the CDK deployment via context to connect it to everything else in the IaC:
+
+```bash
+npx cdk deploy --context knowledgeBaseId=YOUR_KB_ID
+```
+
+### MCP Tools Integration
+
+I created a custom MCP tool that allows the agent to query the Bedrock Knowledge Base during conversations. The agent only fetches what's needed for the current question and returns source snippets in its response, which get displayed in the frontend's supplemental materials panel.
+
+### Frontend Enhancements
+
+I reworked the UI just a bit as well. I added react markdown to make the agents chats a little nicer, and I pretty much completely redid the context sidebar. I really wasnt grasping what the intended purpose of it was given the original implementation, so I decided to just sort of make it a "suplemental materials" section. as I said, the agent will tell us which topic is most relevant and the frontend will display it under the study guide section. Then I added a second tab that shows any source snippets from the pdf that that the agent used in its discussion for reference. These should auto update as the discussion goes on.
+
+---
+
+## 🏗️ Project Structure
+
+```
+study-buddy/
+├── cdk/                          # AWS Infrastructure (CDK)
+│   ├── bin/
+│   │   └── study-buddy.ts        # CDK app entry point
+│   ├── lib/
+│   │   └── study-buddy-stack.ts  # Main infrastructure stack
+│   ├── lambda/
+│   │   ├── agent_handler.py      # Strands agent Lambda function
+│   │   ├── materials.json        # Study materials (copied to Lambda)
+│   │   └── requirements.txt      # Python dependencies
+│   ├── data/
+│   │   ├── json/
+│   │   │   └── materials.json    # Source study materials
+│   │   └── pdf/                  # PDF learning resources
+│   └── cdk.json                  # CDK configuration
+│
+├── src/                          # Frontend (React + TypeScript)
+│   ├── components/
+│   │   ├── Chat.tsx              # Main chat interface
+│   │   ├── Context.tsx           # Supplemental materials panel
+│   │   └── StudyMaterials.tsx    # Study guide display
+│   ├── services/
+│   │   └── api.ts                # API Gateway client
+│   ├── types/
+│   │   └── chat.ts               # TypeScript interfaces
+│   └── main.tsx                  # App entry point
+│
+├── public/                       # Static assets
+├── scripts/                      # Utility scripts
+└── package.json                  # Frontend dependencies
+```
+
+---
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Frontend (React)                              │
+│                       http://localhost:5173                             │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 │ HTTP/REST
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         API Gateway (REST)                              │
+│                  POST /chat  |  GET /materials                          │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 │ Lambda Integration
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     Lambda Function (Python 3.12)                       │
+│                    Strands Agent + MCP Tools                            │
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────┐     │
+│  │  1. Load session from S3                                     │     │
+│  │  2. Query Knowledge Base (if needed via MCP tool)            │     │
+│  │  3. Send prompt to Bedrock                                   │     │
+│  │  4. Get structured response + sources                        │     │
+│  │  5. Save session to S3                                       │     │
+│  └──────────────────────────────────────────────────────────────┘     │
+└──────────┬─────────────────────────────┬────────────────────────────────┘
+           │                             │
+           │                             │
+           ▼                             ▼
+┌──────────────────────┐      ┌──────────────────────────────────────────┐
+│   S3 Bucket          │      │   Amazon Bedrock                         │
+│                      │      │                                          │
+│  Session Storage     │      │  ┌────────────────────────────────────┐  │
+│  (Conversation       │      │  │  Claude 3.5 Haiku                  │  │
+│   History)           │      │  │  (LLM)                             │  │
+│                      │      │  └────────────────────────────────────┘  │
+└──────────────────────┘      │                                          │
+                              │  ┌────────────────────────────────────┐  │
+                              │  │  Knowledge Base                    │  │
+                              │  │  (S3 Vector Buckets - Preview)     │  │
+                              │  │  - PDF embeddings                  │  │
+                              │  │  - Semantic chunking               │  │
+                              │  └────────────────────────────────────┘  │
+                              └──────────────────────────────────────────┘
+```
+
+API Gateway (REST API) with CORS configured for localhost development, proxying to a Lambda function running the Strands agent (Python 3.12, 512MB memory, 30s timeout). The deployment package includes `materials.json` for direct access.
+
+Storage is handled through an S3 bucket for conversation history (session management) and the Bedrock Knowledge Base for vector storage of the PDFs (manually created).
+
+Using Amazon Bedrock for Claude 3.5 Haiku model access, Strands Agents framework for conversation orchestration, and custom MCP tools for querying the knowledge base.
+
+### API Endpoints
+
+```
+POST /chat
+  Body: { message: string, sessionId: string }
+  Returns: {
+    response: string,
+    sources: Array<{content: string, metadata: object}>,
+    relevantTopic: string
+  }
+
+GET /materials
+  Returns: Complete materials.json structure
+```
+
+### Data Flow
+
+User sends message via React frontend → API Gateway routes to Lambda → Strands agent loads conversation history from S3 → queries Bedrock Knowledge Base if needed (via MCP tool) → sends prompt to Claude 3.5 Haiku → returns structured response with sources and topic metadata → saves updated conversation to S3 → frontend updates chat and supplemental materials panel.
+
+---
+
+## 📦 Key Dependencies
+
+### Frontend
+
+- **React 19** - UI framework
+- **TypeScript** - Type safety
+- **Vite** - Build tool and dev server
+- **axios** - HTTP client
+- **react-markdown** - Markdown rendering in chat
+
+### Backend (CDK)
+
+- **aws-cdk-lib** - Infrastructure as code
+- **AWS Lambda** - Serverless compute
+- **API Gateway** - REST API management
+
+### Backend (Lambda)
+
+- **strands-agents** - AI agent orchestration
+- **boto3** - AWS SDK for Python
+- **amazon-bedrock-mcp-server** - MCP tools for Bedrock
+
+### Running the Application
+
+The backend infrastructure is already deployed and ready to use. To get started:
+
 ```bash
 # Install dependencies
 pnpm install
 
-# Start both frontend and backend
-pnpm dev:all
-
-# Or run them separately:
-pnpm dev        # Frontend only (http://localhost:5173)
-pnpm dev:server # Backend only (http://localhost:3001)
+# Start the frontend development server
+pnpm dev
 ```
 
-## ✅ Requirements Checklist
+The frontend will start on `http://localhost:5173` and automatically connect to the deployed production backend.
 
-### Core Requirements (Must Complete)
-- [ ] **API Client**: Complete the `sendMessage` function in `src/services/api.ts`
-- [ ] **AI Integration**: Implement the `chatWithOllama` function in `server/ollama.ts` (If you prefer to take a different approach or use a different LLM feel free to. Create any additional files that you want.)
-- [ ] **Context Integration**: Include study material from BOTH sources in your prompts:
-  - JSON study materials (provided in `server/data/json/materials.json`)
-  - PDF content (extract from `server/data/pdf/biology-for-dummies.pdf`)
+## 🚢 Deploying Your Own Stack
 
-### Ideas for Enhancements (If Time Permits) (If there is something not mentioned in this list that you would like to implement, feel free to do that.)
-- [ ] Streaming responses from LLM
-- [ ] Better context selection (choose most relevant topic from JSON and PDF)
-- [ ] Smart PDF content extraction (relevance-based, chunking, summarization)
-- [ ] Context size optimization strategiesß
-- [ ] Message history persistence
-- [ ] Improved prompt engineering
-- [ ] Loading animations
-- [ ] Error Handling: Show appropriate error messages when things go wrong
+The production backend is already live, but if you'd like to deploy your own instance:
 
-## 📁 Project Structure
+First, create the Knowledge Base manually (S3 Vector Buckets are still in preview and it had to be done manually as I said above). Head to Amazon Bedrock > Knowledge Bases in the AWS Console, create a new Knowledge Base with S3 Vector Bucket storage, upload the PDFs from `cdk/data/`, configure semantic chunking, and note the Knowledge Base ID.
 
-```
-study-buddy/
-├── src/                    # Frontend (React + TypeScript)
-│   ├── components/
-│   │   ├── Chat.tsx       # Main chat component (partially complete)
-│   │   └── Context.tsx    # Study materials display (complete)
-│   ├── services/
-│   │   └── api.ts         # API client (needs implementation)
-│   └── types/
-│       └── chat.ts        # TypeScript interfaces (complete)
-├── server/                 # Backend (Express + TypeScript)
-│   ├── index.ts           # Express server (chat endpoint stubbed)
-│   ├── ollama.ts          # Ollama integration (needs implementation)
-│   └── data/
-│       ├── json/
-│       │   └── materials.json # Biology study materials
-│       └── pdf/
-│           └── biology-for-dummies.pdf # Additional PDF context
-└── README.md              # You are here!
+Then deploy the CDK stack:
+
+```bash
+cd cdk
+pnpm install
+npx cdk bootstrap  # First time only
+npx cdk deploy --context knowledgeBaseId=YOUR_KB_ID
 ```
 
-## 🔍 What We've Provided
-
-1. **Working Examples**:
-   - `/api/health` endpoint - shows how to create an endpoint
-   - `/api/materials` endpoint - returns study materials
-   - `getMaterials()` in api.ts - shows how to make API calls
-
-2. **Study Materials**: 
-   - Three biology topics (photosynthesis, cellular respiration, mitosis) in `server/data/json/materials.json`
-   - A biology textbook PDF in `server/data/pdf/biology-for-dummies.pdf`
-
-3. **UI Components**: Fully styled chat interface and context panel
-
-4. **Type Definitions**: All TypeScript interfaces you'll need
-
-## 💡 Implementation Hints
-
-### 1. Start with the API Client
-Look at the working `getMaterials` function in `src/services/api.ts` as an example.
-
-### 2. Ollama API Documentation
-- Endpoint: `POST http://localhost:11434/api/generate`
-- Request body:
-  ```json
-  {
-    "model": "llama3.2",
-    "prompt": "Your prompt with context here",
-    "stream": false
-  }
-  ```
-- Response: `{ "response": "AI response text", ... }`
-
-### 3. Building Good Prompts
-Include relevant study material from both JSON and PDF sources. For example:
-```
-Study Materials Context:
-[Include relevant JSON study material here]
-
-Additional Reference Material:
-[Include relevant PDF content here]
-
-Question: [User's question]
-Please answer based on the provided context.
-```
-
-### 4. PDF Processing Tips
-- PDF files can be large - think about context window limits
-
-## 🧪 Testing Checklist
-
-Before submitting, make sure:
-- [ ] Chat messages send and receive successfully
-- [ ] Responses are relevant to the study materials
-
-## 📊 Evaluation Criteria
-
-### We Must See
-- Clean, readable code
-- Working chat functionality
-- Proper use of TypeScript
-- Error handling
-
-### We Love to See
-- Thoughtful UX improvements
-- Clever prompt strategies
-- Performance optimizations
-- Code comments where helpful
-- Creative problem solving
-
-## ❓ FAQ
-
-**Q: Can I use a different LLM instead of Ollama?**
-A: Yes! OpenAI or other APIs are fine. Just document your choice.
-
-**Q: Should I implement authentication?**
-A: No, focus on the core chat functionality.
-
-**Q: Can I add additional npm packages?**
-A: Yes, but document why you chose them.
-
-**Q: The context is too large for my prompt, what should I do?**
-A: This is intentional! Show us how you handle this challenge. The PDF adds extra complexity here.
-
-**Q: How should I handle both JSON and PDF content?**
-A: That's up to you! Show us your approach to combining multiple context sources.
-
-## 🎉 Submission
-
-When you're done:
-1. Make sure both `pnpm dev` and `pnpm dev:server` run without errors
-2. Test the complete flow: send message → get response with context
-3. Push to your fork and send the link to the recruiter that you have been communicating with.
-
-Good luck! We're excited to see your solution. Remember, we're looking for clean, working code that demonstrates your expertise in working with LLMs.
+Finally, update `src/services/api.ts` with your new API Gateway endpoint.
 
 ---
 
-**Time Estimate**: 1-3 hours
-**Questions?** Include them in your submission notes.
+## 🧪 Testing
+
+You can test the API directly:
+
+```bash
+curl -X POST https://your-api-url.amazonaws.com/prod/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is photosynthesis?", "sessionId": "test-123"}' | jq
+```
+
+## Future Work
+
+If I had more time the first things that come to mind are:
+
+- Locking down the API (trusting yall not to DDOS my AWS bill too much with requests) and tying session access to their rightful owners.
+- More fine-tuning of the system prompt. I added a lot to take care of most cases and shape responses fairly well, but I don't love it. I think it needs more dynamic transitions between the user just asking for information and challenging their knowledge.
+- Write all the tests
+- Right size the lambda
+- Logging and metrics around the agent. Tracking how often the actions are used, errors, average cost/token use, etc.
+- More error handling in general. I was skimpy with this admittedly. Was already running a little over time due to some difficulties with the UI rework and really only got some basic stuff for if the agent fails, and making sure stuff like the study guide subject validation works.
+- Continue sessions across refreshes. This would have been pretty simple for this little prototype. I probably would have just saved the session id to a cookie and reloaded on page load. Then the user could have picked up where they left off (are start a new session with some new 'new chat' button).
