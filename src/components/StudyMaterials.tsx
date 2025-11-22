@@ -106,7 +106,6 @@ export function StudyMaterials({
   );
 }
 
-// Study Guide Tab - Clean, native component
 function StudyGuideContent({ material }: { material: StudyMaterial }) {
   return (
     <div className="study-guide">
@@ -151,7 +150,6 @@ function StudyGuideContent({ material }: { material: StudyMaterial }) {
   );
 }
 
-// Source Excerpts Tab - Book-style with ellipses
 function SourceExcerptsContent({ sources }: { sources: SourceMaterial[] }) {
   return (
     <div className="source-excerpts">

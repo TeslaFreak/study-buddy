@@ -13,25 +13,6 @@ export class StudyBuddyStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: StudyBuddyStackProps) {
     super(scope, id, props);
 
-    // S3 bucket for study materials
-    const materialsBucket = new s3.Bucket(this, 'StudyMaterialsBucket', {
-      bucketName: this.node.tryGetContext('materialsBucketName') || undefined,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      autoDeleteObjects: false,
-      versioned: false,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      publicReadAccess: false,
-    });
-
-    // S3 bucket for vector storage
-    const vectorBucket = new s3.Bucket(this, 'VectorStorageBucket', {
-      bucketName: this.node.tryGetContext('vectorBucketName') || undefined,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      autoDeleteObjects: false,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-    });
-
     // S3 bucket for session storage
     const sessionBucket = new s3.Bucket(this, 'SessionStorageBucket', {
       bucketName: this.node.tryGetContext('sessionBucketName') || undefined,
@@ -55,7 +36,7 @@ export class StudyBuddyStack extends cdk.Stack {
       ],
     });
 
-    // S3 access for materials, vector store, and sessions
+    // S3 access for sessions
     lambdaRole.addToPolicy(new iam.PolicyStatement({
       actions: [
         's3:GetObject',
@@ -65,10 +46,6 @@ export class StudyBuddyStack extends cdk.Stack {
         's3:GetBucketLocation',
       ],
       resources: [
-        materialsBucket.bucketArn, 
-        `${materialsBucket.bucketArn}/*`, 
-        vectorBucket.bucketArn, 
-        `${vectorBucket.bucketArn}/*`,
         sessionBucket.bucketArn,
         `${sessionBucket.bucketArn}/*`,
       ],
@@ -102,16 +79,12 @@ export class StudyBuddyStack extends cdk.Stack {
       memorySize: 512,
       architecture: lambda.Architecture.ARM_64,
       environment: {
-        MATERIALS_BUCKET: materialsBucket.bucketName,
-        VECTOR_BUCKET: vectorBucket.bucketName,
         SESSION_BUCKET: sessionBucket.bucketName,
         KNOWLEDGE_BASE_ID: scope.node.tryGetContext('knowledgeBaseId') || '',
       },
     });
 
     // Grant Lambda access to buckets
-    materialsBucket.grantRead(chatHandler);
-    vectorBucket.grantRead(chatHandler);
     sessionBucket.grantReadWrite(chatHandler);
 
     // API Gateway REST API
@@ -143,16 +116,6 @@ export class StudyBuddyStack extends cdk.Stack {
     }), { methodResponses: [{ statusCode: '200' }] });
 
     // Stack outputs
-    new cdk.CfnOutput(this, 'MaterialsBucketName', { 
-      value: materialsBucket.bucketName, 
-      description: 'S3 bucket for study materials' 
-    });
-    
-    new cdk.CfnOutput(this, 'VectorBucketName', { 
-      value: vectorBucket.bucketName, 
-      description: 'S3 bucket for vector storage' 
-    });
-    
     new cdk.CfnOutput(this, 'SessionBucketName', { 
       value: sessionBucket.bucketName, 
       description: 'S3 bucket for conversation sessions' 
