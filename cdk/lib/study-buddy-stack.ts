@@ -158,7 +158,7 @@ export class StudyBuddyStack extends cdk.Stack {
       ],
     }));
 
-    // Build Checker Lambda with GitHub MCP integration
+    // Build Checker Lambda with GitHub MCP integration (using remote server)
     const buildCheckerHandler = new lambda.Function(this, 'BuildCheckerHandler', {
       runtime: lambda.Runtime.PYTHON_3_11,
       handler: 'build_checker_handler.handler',
@@ -170,11 +170,8 @@ export class StudyBuddyStack extends cdk.Stack {
             [
               // Install Python dependencies
               'pip install -r requirements.txt -t /asset-output',
-              // Install Node.js and npm (needed for GitHub MCP server)
-              'curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -',
-              'yum install -y nodejs',
-              // Copy Lambda code
-              'cp -r . /asset-output',
+              // Copy Lambda code and data
+              'cp -r *.py *.json /asset-output/',
             ].join(' && ')
           ],
         },

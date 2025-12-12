@@ -16,8 +16,10 @@ from pydantic import BaseModel, Field
 from strands import Agent
 from strands.models import BedrockModel
 from strands.tools.mcp import MCPClient
-from mcp import stdio_client, StdioServerParameters
+from mcp import ClientSession
+from mcp.client.sse import sse_client
 import boto3
+import httpx
 
 
 # Environment variables
@@ -286,24 +288,22 @@ def create_build_checker_agent() -> Agent:
     """
     Create a Strands Agent configured for build process security checking.
 
-    This agent uses the GitHub MCP server to access repository contents and
-    analyze them for automated build/deployment processes.
+    This agent uses the remote GitHub MCP server (hosted by GitHub) to access
+    repository contents and analyze them for automated build/deployment processes.
 
     Returns:
         Configured Agent instance with GitHub MCP tools
     """
-    # Initialize GitHub MCP client
+    # Initialize remote GitHub MCP client
+    headers = {}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
     github_client = MCPClient(
-        lambda: stdio_client(
-            StdioServerParameters(
-                command="npx",
-                args=["-y", "@modelcontextprotocol/server-github"],
-                env=(
-                    {"GITHUB_PERSONAL_ACCESS_TOKEN": GITHUB_TOKEN}
-                    if GITHUB_TOKEN
-                    else None
-                ),
-            )
+        lambda: sse_client(
+            url="https://api.githubcopilot.com/mcp/",
+            headers=headers,
+            timeout=httpx.Timeout(300.0),  # 5 minute timeout for API calls
         )
     )
 
