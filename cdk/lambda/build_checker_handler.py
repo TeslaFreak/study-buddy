@@ -11,16 +11,22 @@ Implements a security auditing agent that:
 import os
 import json
 from typing import Dict, Any, Optional
+from datetime import datetime
 from pydantic import BaseModel, Field
 from strands import Agent
 from strands.models import BedrockModel
 from strands.tools.mcp import MCPClient
 from mcp import stdio_client, StdioServerParameters
+import boto3
 
 
 # Environment variables
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+RESULTS_TABLE = os.environ.get("RESULTS_TABLE", "")
+
+# DynamoDB client for storing results
+dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
 
 
 class BuildCheckResponse(BaseModel):
@@ -324,81 +330,109 @@ def create_build_checker_agent() -> Agent:
         return agent
 
 
-def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
+def store_results(repository: str, results: Dict[str, Any]) -> None:
     """
-    Lambda handler for Build Process Security Check requests via API Gateway.
+    Store analysis results in DynamoDB for auditing and reporting.
 
-    Expected event format:
-    {
-        "body": "{\"repository\": \"owner/repo\"}"
-    }
-
-    The agent will analyze the specified repository and return:
-    - Whether it has automated build processes
-    - What build systems were found
-    - Evidence and recommendations
-
-    Returns:
-        API Gateway response with security assessment
+    Args:
+        repository: Repository name (owner/repo)
+        results: Analysis results dictionary
     """
-    # Handle CORS preflight
-    method = event.get("requestContext", {}).get("http", {}).get("method") or event.get(
-        "httpMethod", ""
-    )
-
-    if method == "OPTIONS":
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-                "Access-Control-Max-Age": "86400",
-            },
-            "body": "",
-        }
+    if not RESULTS_TABLE:
+        print("WARNING: RESULTS_TABLE not configured, skipping storage")
+        return
 
     try:
-        # Parse request body
-        if isinstance(event.get("body"), str):
-            body = json.loads(event.get("body", "{}"))
-        else:
-            body = event.get("body", event)
+        table = dynamodb.Table(RESULTS_TABLE)
 
-        repository = body.get("repository", "")
+        item = {
+            "repository": repository,
+            "timestamp": datetime.utcnow().isoformat(),
+            "hasBuildProcess": (
+                "true" if results["hasBuildProcess"] else "false"
+            ),  # Store as string for GSI
+            "hasBuildProcessBool": results[
+                "hasBuildProcess"
+            ],  # Also store as bool for readability
+            "buildSystemsFound": results["buildSystemsFound"],
+            "confidenceLevel": results["confidenceLevel"],
+            "evidence": results["evidence"],
+            "recommendations": results["recommendations"],
+            "summary": results["summary"],
+            "ttl": int(datetime.utcnow().timestamp())
+            + (90 * 24 * 60 * 60),  # 90 days TTL
+        }
 
-        if not repository:
-            return {
-                "statusCode": 400,
-                "headers": {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-                },
-                "body": json.dumps(
-                    {"error": "Repository parameter is required (format: 'owner/repo')"}
-                ),
-            }
+        table.put_item(Item=item)
+        print(f"Stored results for {repository} in DynamoDB")
 
-        # Validate repository format
-        if "/" not in repository or len(repository.split("/")) != 2:
-            return {
-                "statusCode": 400,
-                "headers": {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-                },
-                "body": json.dumps(
-                    {"error": "Repository must be in format 'owner/repo'"}
-                ),
-            }
+    except Exception as e:
+        print(f"Error storing results in DynamoDB: {str(e)}")
+        # Don't fail the Lambda if DynamoDB write fails
 
-        print(f"Analyzing repository: {repository}")
 
-        # Create agent and analyze repository
-        agent = create_build_checker_agent()
+def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
+    """
+    Lambda handler for Build Process Security Check triggered by SQS.
 
-        # Construct analysis prompt
-        analysis_prompt = f"""Analyze the GitHub repository '{repository}' for automated build and deployment processes.
+    Expected SQS message format:
+    {
+        "repository": "owner/repo"
+    }
+
+    Or batch of messages from SQS:
+    {
+        "Records": [
+            {"body": "{\"repository\": \"owner/repo1\"}"},
+            {"body": "{\"repository\": \"owner/repo2\"}"}
+        ]
+    }
+
+    The agent will analyze each repository and store results in DynamoDB.
+
+    Returns:
+        Summary of processed repositories
+    """
+    processed = []
+    failed = []
+
+    # Handle both single invocation and SQS batch
+    records = event.get("Records", [])
+
+    if not records:
+        # Direct invocation (for testing)
+        records = [{"body": json.dumps(event)}]
+
+    for record in records:
+        repository = "unknown"
+        try:
+            # Parse SQS message body
+            body_str = record.get("body", "{}")
+            if isinstance(body_str, str):
+                body = json.loads(body_str)
+            else:
+                body = body_str if isinstance(body_str, dict) else {}
+
+            repository = body.get("repository", "") if isinstance(body, dict) else ""
+
+            if not repository:
+                print(f"ERROR: Missing repository in message: {record}")
+                failed.append({"error": "Missing repository", "record": str(record)})
+                continue
+
+            # Validate repository format
+            if "/" not in repository or len(repository.split("/")) != 2:
+                print(f"ERROR: Invalid repository format: {repository}")
+                failed.append({"error": "Invalid format", "repository": repository})
+                continue
+
+            print(f"Analyzing repository: {repository}")
+
+            # Create agent and analyze repository
+            agent = create_build_checker_agent()
+
+            # Construct analysis prompt
+            analysis_prompt = f"""Analyze the GitHub repository '{repository}' for automated build and deployment processes.
 
 Please:
 1. Use the GitHub MCP tools to explore the repository structure
@@ -410,56 +444,45 @@ Please:
 Repository to analyze: {repository}
 """
 
-        # Run agent analysis with structured output
-        result = agent(analysis_prompt, structured_output_model=BuildCheckResponse)
-        structured_response = result.structured_output
+            # Run agent analysis with structured output
+            result = agent(analysis_prompt, structured_output_model=BuildCheckResponse)
+            structured_response = result.structured_output
 
-        # Prepare response
-        response_data = {
-            "repository": repository,
-            "hasBuildProcess": structured_response.has_build_process,
-            "buildSystemsFound": structured_response.build_systems_found,
-            "confidenceLevel": structured_response.confidence_level,
-            "evidence": structured_response.evidence,
-            "recommendations": structured_response.recommendations,
-            "summary": structured_response.summary,
-        }
+            # Prepare response
+            response_data = {
+                "repository": repository,
+                "hasBuildProcess": structured_response.has_build_process,
+                "buildSystemsFound": structured_response.build_systems_found,
+                "confidenceLevel": structured_response.confidence_level,
+                "evidence": structured_response.evidence,
+                "recommendations": structured_response.recommendations,
+                "summary": structured_response.summary,
+            }
 
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-            "body": json.dumps(response_data),
-        }
+            # Store results in DynamoDB
+            store_results(repository, response_data)
 
-    except Exception as e:
-        print(f"Error analyzing repository: {str(e)}")
-        import traceback
+            processed.append({"repository": repository, "status": "success"})
+            print(f"✅ Successfully analyzed {repository}")
 
-        traceback.print_exc()
+        except Exception as e:
+            print(f"❌ Error analyzing repository {repository}: {str(e)}")
+            import traceback
 
-        # Safely extract repository from event
-        try:
-            if isinstance(event.get("body"), str):
-                body = json.loads(event.get("body", "{}"))
-            else:
-                body = event.get("body", {})
-            repository = body.get("repository", "unknown")
-        except Exception:
-            repository = "unknown"
+            traceback.print_exc()
 
-        return {
-            "statusCode": 500,
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-            "body": json.dumps(
-                {
-                    "error": f"Error analyzing repository: {str(e)}",
-                    "repository": repository,
-                }
-            ),
-        }
+            failed.append({"repository": repository, "error": str(e)})
+
+    # Return summary
+    summary = {
+        "processedCount": len(processed),
+        "failedCount": len(failed),
+        "processed": processed,
+        "failed": failed,
+    }
+
+    print(f"\n=== BATCH SUMMARY ===")
+    print(f"Processed: {len(processed)}")
+    print(f"Failed: {len(failed)}")
+
+    return summary

@@ -4,6 +4,9 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import { Duration } from 'aws-cdk-lib';
 import * as path from 'path';
 
@@ -91,6 +94,39 @@ export class StudyBuddyStack extends cdk.Stack {
     // Build Checker Lambda (GitHub MCP Agent)
     // ========================================
 
+    // SQS Queue for repository analysis requests
+    const buildCheckQueue = new sqs.Queue(this, 'BuildCheckQueue', {
+      queueName: 'build-check-queue',
+      visibilityTimeout: Duration.seconds(360), // 6 minutes (Lambda timeout + buffer)
+      retentionPeriod: Duration.days(14),
+      deadLetterQueue: {
+        queue: new sqs.Queue(this, 'BuildCheckDLQ', {
+          queueName: 'build-check-dlq',
+          retentionPeriod: Duration.days(14),
+        }),
+        maxReceiveCount: 3, // Retry 3 times before moving to DLQ
+      },
+    });
+
+    // DynamoDB table for storing analysis results
+    const resultsTable = new dynamodb.Table(this, 'BuildCheckResults', {
+      tableName: 'build-check-results',
+      partitionKey: { name: 'repository', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl',
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      pointInTimeRecovery: true,
+    });
+
+    // Add GSI for querying by hasBuildProcess (stored as string "true"/"false")
+    resultsTable.addGlobalSecondaryIndex({
+      indexName: 'BuildProcessIndex',
+      partitionKey: { name: 'hasBuildProcess', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // IAM role for Build Checker Lambda
     const buildCheckerRole = new iam.Role(this, 'BuildCheckerLambdaRole', {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -107,6 +143,19 @@ export class StudyBuddyStack extends cdk.Stack {
         'bedrock:InvokeModelWithResponseStream',
       ],
       resources: ['*'],
+    }));
+
+    // DynamoDB permissions
+    buildCheckerRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'dynamodb:PutItem',
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+      ],
+      resources: [
+        resultsTable.tableArn,
+        `${resultsTable.tableArn}/index/*`,
+      ],
     }));
 
     // Build Checker Lambda with GitHub MCP integration
@@ -134,10 +183,18 @@ export class StudyBuddyStack extends cdk.Stack {
       timeout: Duration.seconds(300), // 5 minutes for GitHub API calls and analysis
       memorySize: 1024, // More memory for MCP server operations
       architecture: lambda.Architecture.ARM_64,
+      reservedConcurrentExecutions: 5, // Limit concurrent executions to respect GitHub API rate limits
       environment: {
         GITHUB_TOKEN: scope.node.tryGetContext('githubToken') || '',
+        RESULTS_TABLE: resultsTable.tableName,
       },
     });
+
+    // Add SQS event source with batch size of 1 for sequential processing
+    buildCheckerHandler.addEventSource(new lambdaEventSources.SqsEventSource(buildCheckQueue, {
+      batchSize: 1, // Process one repository at a time to stay within rate limits
+      reportBatchItemFailures: true, // Enable partial batch responses
+    }));
 
     // API Gateway REST API
     const api = new apigw.LambdaRestApi(this, 'StudyBuddyApi', {
@@ -158,10 +215,6 @@ export class StudyBuddyStack extends cdk.Stack {
     // Materials endpoint - returns full materials.json
     const materials = api.root.addResource('materials');
     materials.addMethod('GET');
-
-    // Build Checker endpoint - analyzes repos for build processes
-    const buildCheck = api.root.addResource('build-check');
-    buildCheck.addMethod('POST', new apigw.LambdaIntegration(buildCheckerHandler));
 
     // Health check endpoint
     const health = api.root.addResource('health');
@@ -190,6 +243,21 @@ export class StudyBuddyStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'BuildCheckerLambdaName', { 
       value: buildCheckerHandler.functionName, 
       description: 'Build Checker Lambda function name' 
+    });
+
+    new cdk.CfnOutput(this, 'BuildCheckQueueUrl', { 
+      value: buildCheckQueue.queueUrl, 
+      description: 'SQS Queue URL for build check requests' 
+    });
+
+    new cdk.CfnOutput(this, 'BuildCheckQueueName', { 
+      value: buildCheckQueue.queueName, 
+      description: 'SQS Queue name for build check requests' 
+    });
+
+    new cdk.CfnOutput(this, 'ResultsTableName', { 
+      value: resultsTable.tableName, 
+      description: 'DynamoDB table for build check results' 
     });
   }
 }

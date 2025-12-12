@@ -4,6 +4,8 @@ This CDK app deploys the complete serverless infrastructure for Study Buddy usin
 
 ## 🏗️ Architecture
 
+### Study Buddy Agent (API Gateway + S3 Sessions)
+
 ```
 ┌─────────────────┐
 │  React Frontend │
@@ -13,26 +15,56 @@ This CDK app deploys the complete serverless infrastructure for Study Buddy usin
 ┌──────────────────────────────────┐
 │      API Gateway (REST)          │
 │  ├─ /chat (POST)                 │
-│  ├─ /materials (GET)             │
-│  └─ /build-check (POST) [NEW]    │
+│  └─ /materials (GET)             │
 └────────┬─────────────────────────┘
          │
-         ├────────────────────┬──────────────────────────────┐
-         ▼                    ▼                              ▼
-┌─────────────────────┐ ┌──────────────────────────────────┐
-│ Study Buddy Lambda  │ │  Build Checker Lambda [NEW]      │
-│ (Strands Agent)     │ │  (Strands Agent + GitHub MCP)    │
-│  ├─ Claude Haiku    │ │  ├─ Claude Sonnet                │
-│  ├─ KB Retrieval    │ │  ├─ GitHub MCP Server            │
-│  └─ S3 Sessions     │ │  └─ Repo Analysis                │
-└─────┬───────────────┘ └────────┬─────────────────────────┘
-      │                          │
-      ├──────────┬───────────────┼────────────┐
-      ▼          ▼               ▼            ▼
-┌──────────┐ ┌────────┐ ┌──────────────┐ ┌─────────┐
-│Materials │ │Sessions│ │  Bedrock KB  │ │ GitHub  │
-│   S3     │ │   S3   │ │              │ │   API   │
-└──────────┘ └────────┘ └──────────────┘ └─────────┘
+         ▼
+┌─────────────────────┐
+│ Study Buddy Lambda  │
+│ (Strands Agent)     │
+│  ├─ Claude Haiku    │
+│  ├─ KB Retrieval    │
+│  └─ S3 Sessions     │
+└─────┬───────────────┘
+      │
+      ├──────────┬───────────────┐
+      ▼          ▼               ▼
+┌──────────┐ ┌────────┐ ┌──────────────┐
+│Materials │ │Sessions│ │  Bedrock KB  │
+│   S3     │ │   S3   │ │              │
+└──────────┘ └────────┘ └──────────────┘
+```
+
+### Build Checker Agent (SQS-Triggered Internal Tool)
+
+```
+┌─────────────────────┐
+│  Submit Repos       │
+│  (Python Script)    │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│   SQS Queue         │
+│  (build-check-      │
+│   queue)            │
+└──────────┬──────────┘
+           │ Trigger (batch=1)
+           ▼
+┌──────────────────────────────┐
+│  Build Checker Lambda        │
+│  (Strands Agent + GitHub MCP)│
+│  ├─ Claude Sonnet            │
+│  ├─ GitHub MCP Server        │
+│  └─ Repo Analysis            │
+└──────────┬───────────────────┘
+           │
+           ├─────────────┬──────────────┐
+           ▼             ▼              ▼
+    ┌──────────┐  ┌──────────┐  ┌──────────┐
+    │ DynamoDB │  │  GitHub  │  │ Bedrock  │
+    │  Table   │  │   API    │  │          │
+    └──────────┘  └──────────┘  └──────────┘
 ```
 
 ## 📦 What's Deployed
@@ -46,15 +78,22 @@ This CDK app deploys the complete serverless infrastructure for Study Buddy usin
    - Maintains conversation history in S3
 
 2. **Build Process Security Checker** (`build_checker_handler.py`) - **NEW**
+   - **Internal tool** triggered by SQS queue (not via API Gateway)
    - Analyzes GitHub repos for automated build processes
    - Uses GitHub MCP server for repository access
+   - Stores results in DynamoDB with 90-day retention
    - Provides security recommendations and compliance reporting
 
 ### API Endpoints
 
 - `POST /chat` - Chat with Study Buddy agent
 - `GET /materials` - Retrieve study materials
-- `POST /build-check` - Analyze repository build processes (NEW)
+
+### Internal Services
+
+- **SQS Queue** (`build-check-queue`) - Queues repositories for analysis
+- **DynamoDB Table** (`build-check-results`) - Stores analysis results with TTL
+- **Dead Letter Queue** (`build-check-dlq`) - Captures failed analyses after 3 retries
 
 ## 📋 Prerequisites
 
@@ -117,6 +156,9 @@ npx cdk deploy -c githubToken=ghp_your_github_token_here
 - `ApiUrl` - Your API endpoint
 - `ChatLambdaName` - Study Buddy Lambda function name
 - `BuildCheckerLambdaName` - Build Checker Lambda function name (NEW)
+- `BuildCheckQueueUrl` - SQS queue URL for submitting repos (NEW)
+- `BuildCheckQueueName` - Queue name (NEW)
+- `ResultsTableName` - DynamoDB table name (NEW)
 
 ### 6. Configure Knowledge Base ID
 
