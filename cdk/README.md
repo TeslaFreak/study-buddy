@@ -10,26 +10,51 @@ This CDK app deploys the complete serverless infrastructure for Study Buddy usin
 └────────┬────────┘
          │ HTTPS
          ▼
-┌─────────────────────────┐
-│  API Gateway (REST)     │
-└────────┬────────────────┘
-         │
-         ▼
 ┌──────────────────────────────────┐
-│  Lambda (Strands Agent Handler)  │
-│  ├─ Strands Agents SDK            │
-│  ├─ BedrockModel (Claude 3.5 Haiku)│
-│  ├─ S3SessionManager              │
-│  └─ KB Retrieval Tool             │
+│      API Gateway (REST)          │
+│  ├─ /chat (POST)                 │
+│  ├─ /materials (GET)             │
+│  └─ /build-check (POST) [NEW]    │
 └────────┬─────────────────────────┘
          │
-         ├──────────────┬───────────────┬──────────────┐
-         ▼              ▼               ▼              ▼
-┌──────────────┐ ┌──────────┐ ┌──────────────┐ ┌──────────┐
-│ S3 Materials │ │ S3 Vector│ │ S3 Sessions  │ │ Bedrock  │
-│    Bucket    │ │  Store   │ │   Bucket     │ │    KB    │
-└──────────────┘ └──────────┘ └──────────────┘ └──────────┘
+         ├────────────────────┬──────────────────────────────┐
+         ▼                    ▼                              ▼
+┌─────────────────────┐ ┌──────────────────────────────────┐
+│ Study Buddy Lambda  │ │  Build Checker Lambda [NEW]      │
+│ (Strands Agent)     │ │  (Strands Agent + GitHub MCP)    │
+│  ├─ Claude Haiku    │ │  ├─ Claude Sonnet                │
+│  ├─ KB Retrieval    │ │  ├─ GitHub MCP Server            │
+│  └─ S3 Sessions     │ │  └─ Repo Analysis                │
+└─────┬───────────────┘ └────────┬─────────────────────────┘
+      │                          │
+      ├──────────┬───────────────┼────────────┐
+      ▼          ▼               ▼            ▼
+┌──────────┐ ┌────────┐ ┌──────────────┐ ┌─────────┐
+│Materials │ │Sessions│ │  Bedrock KB  │ │ GitHub  │
+│   S3     │ │   S3   │ │              │ │   API   │
+└──────────┘ └────────┘ └──────────────┘ └─────────┘
 ```
+
+## 📦 What's Deployed
+
+### Lambda Functions
+
+1. **Study Buddy Chat Handler** (`agent_handler.py`)
+
+   - Socratic tutoring assistant for biology
+   - Uses Bedrock Knowledge Base for grounded responses
+   - Maintains conversation history in S3
+
+2. **Build Process Security Checker** (`build_checker_handler.py`) - **NEW**
+   - Analyzes GitHub repos for automated build processes
+   - Uses GitHub MCP server for repository access
+   - Provides security recommendations and compliance reporting
+
+### API Endpoints
+
+- `POST /chat` - Chat with Study Buddy agent
+- `GET /materials` - Retrieve study materials
+- `POST /build-check` - Analyze repository build processes (NEW)
 
 ## 📋 Prerequisites
 
@@ -37,7 +62,8 @@ This CDK app deploys the complete serverless infrastructure for Study Buddy usin
 2. **AWS CDK** installed: `npm install -g aws-cdk`
 3. **Python 3.12** installed
 4. **Node.js 18+** and pnpm installed
-5. **Bedrock Model Access**: Request access to Claude 3.5 Haiku in AWS Console
+5. **Bedrock Model Access**: Request access to Claude 3.5 Haiku and Sonnet in AWS Console
+6. **GitHub Token** (for Build Checker): Personal access token with repo/public_repo scope
 
 ## 🚀 Quick Start
 
@@ -72,16 +98,25 @@ npx cdk bootstrap
 
 ### 5. Deploy Infrastructure
 
+#### Basic Deployment (Study Buddy only)
+
 ```bash
 npx cdk deploy
 ```
 
+#### Full Deployment (with Build Checker)
+
+```bash
+# Set GitHub token for Build Checker Lambda
+npx cdk deploy -c githubToken=ghp_your_github_token_here
+```
+
 **Note the outputs:**
 
-- `MaterialsBucketName` - Upload your study materials here
 - `SessionBucketName` - Auto-managed conversation storage
 - `ApiUrl` - Your API endpoint
-- `ChatLambdaName` - Lambda function name
+- `ChatLambdaName` - Study Buddy Lambda function name
+- `BuildCheckerLambdaName` - Build Checker Lambda function name (NEW)
 
 ### 6. Configure Knowledge Base ID
 
@@ -162,6 +197,88 @@ The Lambda handler (`lambda/agent_handler.py`) implements a Socratic tutoring as
   "context_used": "Knowledge Base retrieval available via tool"
 }
 ```
+
+## 🔍 Build Process Security Checker (NEW)
+
+The Build Checker Lambda analyzes GitHub repositories to ensure they have proper automated build and deployment processes in place.
+
+### Features
+
+- **Multi-System Detection**: Identifies GitHub Actions, CDK Pipelines, GitLab CI, Jenkins, and more
+- **Project Type Awareness**: Analyzes CDK, frontend, backend, containerized, and Terraform projects
+- **Confidence Scoring**: Provides high/medium/low confidence levels based on evidence quality
+- **Actionable Recommendations**: Suggests specific improvements for build automation
+- **Security Focus**: Flags repositories with manual deployments as security risks
+
+### API Usage
+
+**Endpoint**: `POST {ApiUrl}/build-check`
+
+**Request**:
+
+```json
+{
+  "repository": "awslabs/aws-cdk"
+}
+```
+
+**Response**:
+
+```json
+{
+  "repository": "awslabs/aws-cdk",
+  "hasBuildProcess": true,
+  "buildSystemsFound": ["GitHub Actions"],
+  "confidenceLevel": "high",
+  "evidence": [
+    ".github/workflows/build.yml: Comprehensive CI/CD workflow",
+    ".github/workflows/release.yml: Automated release process"
+  ],
+  "recommendations": [
+    "Consider adding automated security scanning (SAST/DAST)",
+    "Implement multi-stage deployments (dev → staging → prod)"
+  ],
+  "summary": "Repository has robust build automation with GitHub Actions. Well-established processes with opportunities for enhanced security."
+}
+```
+
+### Setup Requirements
+
+1. **GitHub Token**: Create a personal access token at https://github.com/settings/tokens
+
+   - Scope: `repo` (for private repos) or `public_repo` (public only)
+   - Set during deployment: `-c githubToken=ghp_your_token`
+
+2. **Bedrock Model Access**: Ensure Claude 3.5 Sonnet is enabled in your AWS account
+
+3. **Node.js in Lambda**: The Lambda bundles Node.js for the GitHub MCP server
+
+### Testing
+
+Use the provided test script:
+
+```bash
+cd cdk/lambda
+python test_build_checker.py awslabs/aws-cdk
+# Enter your API URL when prompted
+```
+
+Or use curl:
+
+```bash
+curl -X POST https://your-api-url/build-check \
+  -H "Content-Type: application/json" \
+  -d '{"repository": "awslabs/aws-cdk"}'
+```
+
+### Use Cases
+
+1. **Security Audits**: Identify repositories lacking automated builds
+2. **Compliance Reporting**: Track CI/CD adoption across teams
+3. **Onboarding Validation**: Ensure new projects have proper automation
+4. **Best Practices**: Promote build automation organization-wide
+
+For detailed documentation, see [lambda/BUILD_CHECKER_README.md](lambda/BUILD_CHECKER_README.md)
 
 ## 🗄️ Bedrock Knowledge Base Setup
 

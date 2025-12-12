@@ -87,6 +87,58 @@ export class StudyBuddyStack extends cdk.Stack {
     // Grant Lambda access to buckets
     sessionBucket.grantReadWrite(chatHandler);
 
+    // ========================================
+    // Build Checker Lambda (GitHub MCP Agent)
+    // ========================================
+
+    // IAM role for Build Checker Lambda
+    const buildCheckerRole = new iam.Role(this, 'BuildCheckerLambdaRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      description: 'Execution role for Build Process Security Checker',
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+    });
+
+    // Bedrock permissions for the agent
+    buildCheckerRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'bedrock:InvokeModel',
+        'bedrock:InvokeModelWithResponseStream',
+      ],
+      resources: ['*'],
+    }));
+
+    // Build Checker Lambda with GitHub MCP integration
+    const buildCheckerHandler = new lambda.Function(this, 'BuildCheckerHandler', {
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'build_checker_handler.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda'), {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          command: [
+            'bash', '-c',
+            [
+              // Install Python dependencies
+              'pip install -r requirements.txt -t /asset-output',
+              // Install Node.js and npm (needed for GitHub MCP server)
+              'curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -',
+              'yum install -y nodejs',
+              // Copy Lambda code
+              'cp -r . /asset-output',
+            ].join(' && ')
+          ],
+        },
+      }),
+      role: buildCheckerRole,
+      timeout: Duration.seconds(300), // 5 minutes for GitHub API calls and analysis
+      memorySize: 1024, // More memory for MCP server operations
+      architecture: lambda.Architecture.ARM_64,
+      environment: {
+        GITHUB_TOKEN: scope.node.tryGetContext('githubToken') || '',
+      },
+    });
+
     // API Gateway REST API
     const api = new apigw.LambdaRestApi(this, 'StudyBuddyApi', {
       handler: chatHandler,
@@ -106,6 +158,10 @@ export class StudyBuddyStack extends cdk.Stack {
     // Materials endpoint - returns full materials.json
     const materials = api.root.addResource('materials');
     materials.addMethod('GET');
+
+    // Build Checker endpoint - analyzes repos for build processes
+    const buildCheck = api.root.addResource('build-check');
+    buildCheck.addMethod('POST', new apigw.LambdaIntegration(buildCheckerHandler));
 
     // Health check endpoint
     const health = api.root.addResource('health');
@@ -129,6 +185,11 @@ export class StudyBuddyStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ChatLambdaName', { 
       value: chatHandler.functionName, 
       description: 'Lambda function name' 
+    });
+
+    new cdk.CfnOutput(this, 'BuildCheckerLambdaName', { 
+      value: buildCheckerHandler.functionName, 
+      description: 'Build Checker Lambda function name' 
     });
   }
 }
